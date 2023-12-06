@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/4.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
-from datetime import timedelta
+import datetime
 from pathlib import Path
 
 from django.conf import settings
@@ -33,6 +33,8 @@ ALLOWED_HOSTS = [
     '0.0.0.0',
     'localhost',
     '127.0.0.1',
+    '34.16.169.75'
+
 ]
 
 
@@ -137,10 +139,10 @@ SPECTACULAR_SETTINGS = {
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFE_TIME": timedelta(minutes=60),
-    "TOKEN_OBTAIN_SERIALIZER": "bc.serializers.TokenObtainSerializer",
+    'ACCESS_TOKEN_LIFETIME': datetime.timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': datetime.timedelta(days=7),
+    'TOKEN_OBTAIN_SERIALIZER': 'bc.serializers.TokenObtainSerializer',
 }
-
 
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/

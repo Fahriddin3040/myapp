@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from rest_framework.response import Response
 
+from .functions import get_balance, history
 from .models import Operations, User, Category
 from typing import Union
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -9,7 +10,7 @@ from django.contrib.auth.hashers import make_password
 
 class UserSerializer(serializers.ModelSerializer):
 	id = serializers.IntegerField(read_only=True)
-	balance = serializers.SerializerMethodField(method_name='get_balance', read_only=True)
+	balance = serializers.SerializerMethodField(method_name='get_balance')
 	password = serializers.CharField(write_only=True)
 	row_password = serializers.CharField(max_length=50, write_only=True)
 
@@ -30,7 +31,6 @@ class UserSerializer(serializers.ModelSerializer):
 
 	def get_balance(self, obj) -> Union[float, int]:
 		result = 0
-
 		notes = Operations.objects.filter(user=obj)
 
 		for note in notes:
@@ -38,19 +38,20 @@ class UserSerializer(serializers.ModelSerializer):
 				result -= note.amount
 			elif note.typ == 2:
 				result += note.amount
+		result += obj.balance
+
 		return result
 
 
 class OperationSerializer(serializers.ModelSerializer):
-	category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all(), )
+	category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all())
 	category_title = serializers.SerializerMethodField(method_name='get_category_title')
 	user = serializers.StringRelatedField(read_only=True)
-	balance = serializers.SerializerMethodField(read_only=True)
+	balance = serializers.SerializerMethodField(read_only=True, method_name = 'get_balance')
 
 	class Meta:
 		model = Operations
-		fields = ['id', 'user', 'category', 'category_title', 'typ', 'comment', 'amount', 'date_time']
-
+		fields = ['id', 'user', 'category', 'category_title', 'balance', 'typ', 'comment', 'amount', 'date_time']
 
 	def __init__(self, *args, **kwargs):
 		super(OperationSerializer, self).__init__(*args, **kwargs)
@@ -59,9 +60,8 @@ class OperationSerializer(serializers.ModelSerializer):
 			user_categories = Category.objects.filter(user_id=request.user.id)
 			self.fields['category'].queryset = user_categories
 
-	def balance(self, obj) -> Union[float, int]:
-		balance = obj.user.balance
-		return balance
+	def get_balance(self, obj) -> Union[float, int]:
+		return get_balance(obj.user)
 
 	def get_category_title(self, obj) -> str:
 		return obj.category.title
@@ -73,41 +73,9 @@ class OperationSerializer(serializers.ModelSerializer):
 		categories = Category.objects.filter(user=self.user)
 		return categories
 
-	def calculate_balance(self, user, validated_data):
-		balance = 0.0
-		typ = validated_data['typ']
-		amount = validated_data['amount']
 
-		if typ == 1:
-			balance -= amount
-		elif typ == 2:
-			balance += amount
-
-		user.balance += balance
-
-	def change_balance(self, obj, updated_obj, user):
-		typ = obj.typ
-		upd_typ = updated_obj.typ
-		amount = obj.amount
-		upd_amount = upd_typ.amount
-
-		if typ == upd_typ and typ == 1:
-			user.user.balance -= (amount - upd_amount)
-		elif typ == upd_typ and typ == 2:
-			user.user.balance += (amount - upd_amount)
-		elif typ != upd_typ and upd_typ == 1:
-			user.user.balance -= amount - upd_amount
-		elif typ != upd_typ and upd_typ == 2:
-			user.user.balance += amount + upd_amount
-
-	def create(self, validated_data):
-		user = validated_data['user']
-		self.calculate_balance(user, validated_data)
-		return super().create(validated_data)
-
-	def update(self, instance, validated_data):
-		self.change_balance(instance, validated_data)
-		return super().update(instance, validated_data)
+class BalanceSerializer(serializers.Serializer):
+	balance = serializers.FloatField()
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -146,4 +114,10 @@ class PasswordSerializer(serializers.ModelSerializer):
 
 		else:
 			raise serializers.ValidationError({'password': 'Пароли не совпадают!'})
+
+
+# SECURE_SSL_REDIRECT=False
+# SESSION_COOKIE_SECURE=False
+# CSRF_COOKIE_SECURE=False
+
 

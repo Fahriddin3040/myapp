@@ -6,7 +6,7 @@ from .models import Operations, User, Category
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
-    fields = ('first_name', 'last_name', 'username', 'password', 'email', )
+    fields = ('first_name', 'last_name', 'username', 'password', 'email', 'balance')
     list_display = ('id', 'get_full_name', 'username', 'password', 'email', 'balance')
     list_display_links = ('id', 'username')
 
@@ -40,3 +40,9 @@ class CategoryAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         obj.user = request.user
         super().save_model(request, obj, form, change)
+
+
+
+
+
+

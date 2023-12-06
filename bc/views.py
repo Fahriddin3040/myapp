@@ -5,8 +5,10 @@ from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema_view, extend_schema
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .serializers import OperationSerializer, UserSerializer, CategorySerializer, PasswordSerializer
+from .functions import history
+from .serializers import OperationSerializer, UserSerializer, CategorySerializer, PasswordSerializer, BalanceSerializer
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.filters import SearchFilter
 from rest_framework.permissions import IsAuthenticated
@@ -42,20 +44,26 @@ class OperationModelViewSet(viewsets.ModelViewSet):
     filterset_fields = ['date_time', 'typ', 'amount']
     search_fields = ['category__title', 'amount']
 
+    def add_balance(self, user, data):
+        data = {
+            'balance': user.balance,
+            'data': data
+        }
+
+        return data
+
     def get_queryset(self):
         queryset = super().get_queryset()
         return queryset.filter(user_id=self.request.user.id)
 
     def update(self, request, *args, **kwargs):
-        kwargs['partial'] = True
-        partial = kwargs.pop('partial', False)
         data = request.data
         instance = self.get_object()
-        serializer = self.serializer_class(instance=instance, data=data, partial=partial)
+        serializer = self.serializer_class(instance=instance, data=data)
         serializer.is_valid(raise_exception=True)
-        category = serializer.validated_data['category']
+        category = serializer.validated_data.get('category', False)
 
-        if category.user != request.user:
+        if category and category.user != request.user:
             raise rest_framework.exceptions.ValidationError("У вас нет доступа в заданной категории!")
 
         serializer.save()
@@ -65,9 +73,6 @@ class OperationModelViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance=instance)
-
-        user = serializer.validated_data['user']
-        balance = user.balance
         if instance.user != request.user:
             raise rest_framework.exceptions.NotAcceptable('У вас нет доступа к этой записи!')
 
@@ -76,10 +81,16 @@ class OperationModelViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
+        user = request.user
 
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(data=serializer.data)
+            data = self.add_balance(user, serializer)
+            return self.get_paginated_response(data=data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        data = self.add_balance(user, serializer.data)
+        return Response(data)
 
     @extend_schema(summary="Удалить операцию", description="Удаляет определённую запись.")
     def destroy(self, request, *args, **kwargs):
@@ -90,7 +101,7 @@ class OperationModelViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         data = request.data
-        category = data['category']
+        category = data.get('category', None)
         cat_obj = Category.objects.filter(id=category, user_id=request.user)
 
         if cat_obj:
@@ -119,12 +130,11 @@ class UserAPIView(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        tokens = TokenObtainPairView.as_view()
+        return Response(serializer.data)
 
     def retrieve(self, request, *args):
         user = request.user
-
         serializer = self.serializer_class(user)
         return Response(serializer.data, status=201)
 
@@ -138,7 +148,6 @@ class UserAPIView(viewsets.ModelViewSet):
         serializer.save()
 
         return Response(serializer.data)
-
 
     def destroy(self, request, *args):
         pk = request.user.id
@@ -234,6 +243,26 @@ class CategoryApiView(viewsets.ModelViewSet):
         instance.delete()
 
         return Response('Выбранная категория была улалена!')
+
+
+class BalanceAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+    serializer_class = BalanceSerializer
+    queryset = models.Operations.objects
+
+    def patch(self, request):
+        user = request.user
+
+        serializer = BalanceSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        value = serializer.validated_data['balance']
+        ops_history = history(user.id)
+
+        user.balance = value - ops_history
+        user.save()
+
+        return Response({'balance': value})
 
 
 def redirect_to_note(request):
