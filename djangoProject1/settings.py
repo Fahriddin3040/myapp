@@ -34,7 +34,10 @@ ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
     '34.16.169.75'
+]
 
+ALLOWED_PORTS = [
+    '3000',
 ]
 
 

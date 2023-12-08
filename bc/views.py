@@ -1,9 +1,10 @@
-import rest_framework.exceptions
+from rest_framework.exceptions import NotAuthenticated, ValidationError, NotAcceptable
 from django.contrib.auth.hashers import make_password
 from django.http import HttpResponseRedirect
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema_view, extend_schema
 from rest_framework.response import Response
+from rest_framework.templatetags import rest_framework
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
@@ -64,7 +65,7 @@ class OperationModelViewSet(viewsets.ModelViewSet):
         category = serializer.validated_data.get('category', False)
 
         if category and category.user != request.user:
-            raise rest_framework.exceptions.ValidationError("У вас нет доступа в заданной категории!")
+            raise ValidationError("У вас нет доступа в заданной категории!")
 
         serializer.save()
         return Response(serializer.data, status=201)
@@ -74,7 +75,7 @@ class OperationModelViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         serializer = self.get_serializer(instance=instance)
         if instance.user != request.user:
-            raise rest_framework.exceptions.NotAcceptable('У вас нет доступа к этой записи!')
+            raise NotAcceptable('У вас нет доступа к этой записи!')
 
         return Response(serializer.data)
 
@@ -134,6 +135,8 @@ class UserAPIView(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     def retrieve(self, request, *args):
+        if not request.user.is_authenticated:
+            raise NotAuthenticated('Вы не авторизованы!!')
         user = request.user
         serializer = self.serializer_class(user)
         return Response(serializer.data, status=201)
